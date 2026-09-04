@@ -1,0 +1,25 @@
+{
+  "name": "ogr-node-hal-avr",
+  "version": "0.1.0",
+  "description": "AVR hardware abstraction layer for ogr-node-core: I2C-slave transport, EN_IN/EN_OUT GPIO, and EEPROM-backed PLANT_UID storage for ATmega328-class (hardware TWI) targets. ATtiny85-class (USI) support is planned.",
+  "keywords": ["i2c", "opengardenrack", "avr", "atmega328"],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vvapnik/ogr-node-hal-avr.git"
+  },
+  "authors": [
+    {
+      "name": "vvapnik",
+      "url": "https://github.com/vvapnik"
+    }
+  ],
+  "license": "MIT",
+  "frameworks": "arduino",
+  "platforms": "atmelavr",
+  "dependencies": {
+    "ogr-node-core": "https://github.com/vvapnik/ogr-node-core.git"
+  },
+  "export": {
+    "include": ["src", "examples", "library.json", "library.properties", "README.md"]
+  }
+}
