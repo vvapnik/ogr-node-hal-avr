@@ -9,11 +9,22 @@ node protocol engine. Install both libraries; this one supplies the
 | Target | Peripheral | Status |
 |---|---|---|
 | ATmega328 (Arduino Uno/Nano/Pro Mini, ...) | Hardware TWI, via Arduino `Wire` | Supported |
-| ATtiny85 | USI, bit-banged | Planned, not yet implemented |
+| ATtiny85 | USI, via Arduino `Wire` | Supported |
 
-The transport backend is selected at compile time by which register set the
-target MCU actually has (`TWCR` vs `USIDR`) — sketches use the same
-`OgrAvrTransport` class name either way.
+Both targets use the exact same `OgrAvrTransport` code — `Wire.h` itself
+differs per framework (`framework-arduino-avr` implements it on hardware
+TWI, `framework-arduino-avr-attiny` implements the identical slave API
+(`begin(address)`/`onReceive`/`onRequest`) on top of USI via the bundled
+USI_TWI_Slave), and PlatformIO picks whichever one matches the board. There
+is no `#ifdef TWCR`/`USIDR` branching left in this package at all.
+
+> **Board-definition gotcha:** a few PlatformIO ATtiny85 board entries (e.g.
+> `trinket5`) resolve to the plain `framework-arduino-avr` core instead of
+> `framework-arduino-avr-attiny`, which fails to compile *any* I2C code on
+> this chip (`framework-arduino-avr`'s `Wire` assumes hardware TWI registers
+> that don't exist on ATtiny85) — not specific to this library. If a board
+> fails with `'TWINT' undeclared` or similar, use the generic `attiny85`
+> board (or set `board_build.core = tiny` explicitly) instead.
 
 ## Usage
 
@@ -43,26 +54,33 @@ void loop() {
 See [examples/MoistureSensor](examples/MoistureSensor) for a complete
 sketch (moisture sensor + water valve, PLANT_UID persisted to EEPROM).
 
-## Why plain `Wire`, not a raw TWCR/TWDR driver?
+## Why plain `Wire`, not a raw peripheral driver?
 
 The (revised) OpenGardenRack spec §5.3 never requires a node to NACK a
 specific byte — a node always ACKs a write and reports a bad PEC through
 `STATUS` instead. That removes the one requirement that would have forced a
-low-level, per-byte-ACK-control I2C slave driver, so this package builds on
-Arduino's stock `Wire` slave API (`onReceive`/`onRequest`) instead of
-reimplementing TWI register handling.
+low-level, per-byte-ACK-control I2C slave driver (TWCR/TWDR register
+handling on ATmega328, or a hand-rolled USI bit-banged state machine on
+ATtiny85), so this package builds entirely on Arduino's stock `Wire` slave
+API (`onReceive`/`onRequest`) — on *every* target it supports.
 
 ## Notes
 
 - `OgrAvrGpio` and `OgrAvrEepromStorage` are chip-agnostic (plain
   `digitalRead`/`digitalWrite`/`pinMode` and the Arduino `EEPROM` library),
-  so they'll work unchanged once the ATtiny85 (USI) transport backend lands.
-- Endpoint `onRead`/`onWrite` callbacks run synchronously from the TWI ISR.
-  Keep them fast — `digitalWrite`/`analogRead` are fine, anything that
-  blocks for more than a few tens of microseconds risks stalling the I2C
-  clock (see [ogr-node-core](https://github.com/vvapnik/ogr-node-core)'s
-  design notes on why PLANT_UID storage writes are deliberately deferred
-  out of that same call path).
+  so they work unchanged across every target above.
+- Endpoint `onRead`/`onWrite` callbacks run synchronously from Wire's
+  interrupt/ISR context on every target. Keep them fast —
+  `digitalWrite`/`analogRead` are fine, anything that blocks for more than a
+  few tens of microseconds risks stalling the I2C clock (see
+  [ogr-node-core](https://github.com/vvapnik/ogr-node-core)'s design notes
+  on why PLANT_UID storage writes are deliberately deferred out of that
+  same call path). This is a real constraint on ATtiny85 specifically: it
+  has no hardware clock-stretching-friendly headroom beyond what USI's
+  two-wire mode itself provides.
+- On ATtiny85, `Wire`'s SDA/SCL are fixed by the USI peripheral itself (USI
+  DI = physical SDA, USCK = physical SCL) — there's exactly one USI, so
+  unlike `OgrAvrGpio`'s EN pins, I2C pin choice isn't a sketch-level option.
 
 ## Verifying a build locally
 
@@ -72,4 +90,7 @@ project) — use `pio ci` against an example instead:
 ```sh
 pio ci examples/MoistureSensor/MoistureSensor.ino \
   --lib="." --lib="../ogr-node-core" --board=uno
+
+pio ci examples/MoistureSensor/MoistureSensor.ino \
+  --lib="." --lib="../ogr-node-core" --board=attiny85
 ```

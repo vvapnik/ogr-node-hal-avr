@@ -1,22 +1,15 @@
 #include "OgrAvrTransport.h"
 #include "OgrTypes.h" // kMaxWriteFrame / kMaxReadFrame
 
-// TWCR/USIDR are register macros from avr/io.h, pulled in transitively by
-// most Arduino headers but not guaranteed yet at this point — include it
-// explicitly so the peripheral-presence check below is reliable.
-#include <avr/io.h>
-
-// Peripheral presence (TWCR vs USIDR), not a chip name list, decides which
-// backend compiles in — the same test libraries like TinyWireM/USIWire use to
-// tell hardware-TWI AVRs from USI-only ones.
-#if defined(TWCR)
-
-// ---- ATmega328-class AVRs: hardware TWI via Arduino's Wire -----------------
-//
 // Spec §5.3 (revised) never requires a node to NACK a specific byte — a node
 // always ACKs and reports a bad PEC through STATUS instead. That means the
-// stock Arduino Wire slave API (onReceive/onRequest, buffered) is sufficient;
-// there's no need to drop to raw TWCR/TWDR handling for byte-level ACK control.
+// stock Arduino Wire slave API (onReceive/onRequest, buffered) is enough on
+// every AVR target this package supports; there's no need to drop to raw
+// peripheral (TWCR/TWDR or USI) register handling anywhere. Which concrete
+// peripheral Wire itself is built on (hardware TWI vs bit-banged USI) is
+// entirely the active framework's problem — framework-arduino-avr and
+// framework-arduino-avr-attiny each ship a Wire library with the same slave
+// API on top of whichever one their target chip actually has.
 #include <Wire.h>
 
 namespace ogr_hal_avr {
@@ -33,7 +26,8 @@ void OgrAvrTransport::begin(ogr::IOgrProtocolSink &sink, uint8_t address) {
 
 void OgrAvrTransport::setAddress(uint8_t address) {
   // Re-arming the callbacks is defensive, not strictly required — Wire.begin()
-  // reinitializes TWAR but doesn't drop the previously-registered handlers.
+  // reinitializes the peripheral but doesn't drop the previously-registered
+  // handlers on either implementation.
   Wire.begin(address);
   Wire.onReceive(onReceiveTrampoline);
   Wire.onRequest(onRequestTrampoline);
@@ -42,7 +36,8 @@ void OgrAvrTransport::setAddress(uint8_t address) {
 void OgrAvrTransport::end() { Wire.end(); }
 
 void OgrAvrTransport::poll() {
-  // Fully interrupt-driven hardware peripheral — nothing to pump here.
+  // Fully interrupt-driven on both TWI and USI Wire implementations —
+  // nothing to pump here.
 }
 
 void OgrAvrTransport::onReceiveTrampoline(int numBytes) {
@@ -82,12 +77,3 @@ void OgrAvrTransport::onRequestTrampoline() {
 }
 
 } // namespace ogr_hal_avr
-
-#elif defined(USIDR)
-
-// ---- ATtiny85-class AVRs: USI, bit-banged -----------------------------
-#error "ogr-node-hal-avr: the USI (ATtiny85-class) transport is not implemented yet. ATmega328-class AVRs (hardware TWI) are supported now — see README."
-
-#else
-#error "ogr-node-hal-avr: unrecognized AVR — found neither TWCR (hardware TWI) nor USIDR (USI)."
-#endif

@@ -1,7 +1,13 @@
-// I2C-slave transport for AVR targets. Two backends live in OgrAvrTransport.cpp,
-// selected at compile time by which peripheral the MCU actually has — the
-// class name/API is identical either way, so sketches don't change between
-// ATmega328 (hardware TWI) and ATtiny85 (USI, bit-banged).
+// I2C-slave transport for AVR targets, built on Arduino's Wire.
+//
+// This works unchanged on both ATmega328-class chips (hardware TWI) and
+// ATtiny85-class chips (USI, no hardware TWI at all): framework-arduino-avr
+// and framework-arduino-avr-attiny each ship their own Wire library, picked
+// automatically by which framework the current board resolves to, and both
+// implement the same TwoWire API — including slave mode (`begin(address)`,
+// `onReceive`, `onRequest`) — on top of whatever peripheral (TWI or USI)
+// that MCU actually has. So there is nothing chip-specific left to write
+// here at all.
 #pragma once
 
 #include <stdint.h>
